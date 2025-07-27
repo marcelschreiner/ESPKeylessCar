@@ -325,6 +325,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Apple's BLE privacy specification
 - Automotive security best practices
 - Open source community feedback
+- Thanks to: Christian for the discussions during the build, which helped a lot! The podcast [bitsundso.de #958](https://www.bitsundso.de/bus958/) for the idea, to achieve this with Claude Code. And finally thanks to the youtube channel community [Spiel und Zeug](https://www.youtube.com/@spielundzeug) ! 
 
 ---
 
