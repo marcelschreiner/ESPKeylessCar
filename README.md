@@ -17,11 +17,10 @@ An advanced ESP32-based keyless entry system that automatically detects iPhone p
 
 ## 🛠️ Hardware Requirements
 
-- **ESP32 Development Board** (ESP32-D0WD-V3 recommended)
+- **ESP32 Board** 
 - **Transistors** for key fob signal control
 - **LED** for status indication
 - **Connections:**
-  - Pin 2: Status LED
   - Pin 23: Key power control (transistor base)
   - Pin 19: Lock signal (transistor base)
   - Pin 18: Unlock signal (transistor base)
@@ -161,7 +160,7 @@ The system uses iPhone's BLE privacy features for secure device identification:
 - ✅ **Fixed PIN**: Prevents unauthorized device addition (PIN: 123456)
 - ✅ **Physical Access Required**: Device pairing requires physical presence
 - ✅ **No Cloud Dependencies**: Fully offline operation
-- ⚠️ **Production Hardening**: Consider additional security for commercial use
+- ⚠️ **Production Hardening**: Consider additional security for personal or commercial use
 
 ## 🐛 Troubleshooting
 
@@ -215,9 +214,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/esp32-keyless-system/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/esp32-keyless-system/discussions)
-- **Documentation**: [Wiki](https://github.com/yourusername/esp32-keyless-system/wiki)
+- **Issues**: [GitHub Issues](https://github.com/crazyhoesl/ESPKeylessCar/issues)
+- **Documentation**: [Wiki](https://github.com/crazyhoesl/ESPKeylessCar/wiki)
 
 ---
 
