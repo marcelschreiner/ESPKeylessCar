@@ -30,6 +30,7 @@ Power On → Check EEPROM → No devices found → 30s Pairing Window
 - System extracts iPhone's IRK during secure pairing
 - IRK stored in EEPROM with auto-generated device name
 - System restarts for clean BLE initialization
+- Now, you can "forget" the device in iOS and remove it (your iOS Device will be identified via the extracted IRK)
 
 ### 3. **Operational Mode**
 ```
