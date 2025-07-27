@@ -15,6 +15,34 @@ An advanced ESP32-based keyless entry system that automatically detects iPhone p
 - 📡 **Advanced BLE Stack**: Handles complex server-to-scanner mode transitions
 - 🐕 **Watchdog Protection**: Hardware watchdog prevents system lockups
 
+
+
+## 🚀 How It Works
+
+### 1. **Initial Setup Phase**
+```
+Power On → Check EEPROM → No devices found → 30s Pairing Window
+```
+
+### 2. **Device Learning**
+- ESP32 advertises as "ESPKV7 Tracker" (fitness device)
+- iPhone connects via Bluetooth settings
+- System extracts iPhone's IRK during secure pairing
+- IRK stored in EEPROM with auto-generated device name
+- System restarts for clean BLE initialization
+
+### 3. **Operational Mode**
+```
+Power On → Load devices → 30s pairing window → Auto-restart → Keyless mode
+```
+
+### 4. **Proximity Detection**
+- Continuous BLE scanning for known iPhone RPA (Resolvable Private Address)
+- AES-128 encryption verification using stored IRKs
+- Hysteresis filtering prevents false triggers from weak signals
+- Automatic unlock when iPhone approaches (RSSI > -80dBm)
+- Automatic lock when iPhone leaves (10s timeout + stabilization)
+
 ## 🛠️ Hardware Requirements
 
 ### Components List
@@ -97,48 +125,6 @@ Key Fob GND ────────┴─────┘
 5. **ESP32 Connections**: Connect resistor ends to ESP32 pins 23, 19, 18
 6. **Test**: Use multimeter to verify connections before powering on
 
-### Alternative: Relay Module Option
-
-For easier installation without key fob modification:
-
-```
-ESP32 Pin 23 → 12V Relay Module (Key Power)
-ESP32 Pin 19 → 5V Relay Module (Lock Signal)  
-ESP32 Pin 18 → 5V Relay Module (Unlock Signal)
-
-Connect relay outputs to car's central locking wires
-```
-
-**Components for Relay Option:**
-- 1x 12V Relay Module
-- 2x 5V Relay Modules  
-- Access to car's central locking wiring
-
-## 🚀 How It Works
-
-### 1. **Initial Setup Phase**
-```
-Power On → Check EEPROM → No devices found → 30s Pairing Window
-```
-
-### 2. **Device Learning**
-- ESP32 advertises as "ESPKV7 Tracker" (fitness device)
-- iPhone connects via Bluetooth settings
-- System extracts iPhone's IRK during secure pairing
-- IRK stored in EEPROM with auto-generated device name
-- System restarts for clean BLE initialization
-
-### 3. **Operational Mode**
-```
-Power On → Load devices → 30s pairing window → Auto-restart → Keyless mode
-```
-
-### 4. **Proximity Detection**
-- Continuous BLE scanning for known iPhone RPA (Resolvable Private Address)
-- AES-128 encryption verification using stored IRKs
-- Hysteresis filtering prevents false triggers from weak signals
-- Automatic unlock when iPhone approaches (RSSI > -80dBm)
-- Automatic lock when iPhone leaves (10s timeout + stabilization)
 
 ## 📋 Installation
 
