@@ -148,8 +148,8 @@ Power On → Load devices → 30s pairing window → Auto-restart → Keyless mo
 
 ### Setup
 ```bash
-git clone https://github.com/yourusername/esp32-keyless-system
-cd esp32-keyless-system
+git clone https://github.com/crazyhoesl/ESPKeylessCar
+cd ESPKeylessCar
 pio run --target upload
 pio device monitor
 ```
@@ -249,7 +249,7 @@ The system uses iPhone's BLE privacy features for secure device identification:
 - ✅ **Fixed PIN**: Prevents unauthorized device addition (PIN: 123456)
 - ✅ **Physical Access Required**: Device pairing requires physical presence
 - ✅ **No Cloud Dependencies**: Fully offline operation
-- ⚠️ **Production Hardening**: Consider additional security for commercial use
+- ⚠️ **Production Hardening**: Consider additional security for personal or commercial use
 
 ## 🐛 Troubleshooting
 
@@ -303,9 +303,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/esp32-keyless-system/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/esp32-keyless-system/discussions)
-- **Documentation**: [Wiki](https://github.com/yourusername/esp32-keyless-system/wiki)
+- **Issues**: [GitHub Issues](https://github.com/crazyhoesl/ESPKeylessCar/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/crazyhoesl/ESPKeylessCar/discussions)
+- **Documentation**: [Wiki](https://github.com/crazyhoesl/ESPKeylessCar/wiki)
 
 ---
 
