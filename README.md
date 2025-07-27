@@ -153,11 +153,15 @@ Car OBD2 Port → OBD2-to-USB-C Cable → ESP32 USB-C Port
 - **Location**: Mount ESP32 near OBD2 port (usually under dashboard)
 
 
-![Proof-of-Concept](PoC.jpeg)
-Proof of Concept on Breadboard
 
+#### **Proof of Concept on Breadboard (LEDs only for visual confirmation):**
+![Proof-of-Concept](PoC.jpeg)
+
+
+#### **Prototype:**
 ![Prototype](IMG_2320.jpeg)
-Prototype
+
+
 
 ## 📋 Installation
 
