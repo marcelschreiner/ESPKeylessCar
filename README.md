@@ -299,7 +299,7 @@ The system uses iPhone's BLE privacy features for secure device identification:
 
 ## 📈 Performance Metrics
 
-- **Detection Range**: ~15-20 meters (adjustable via RSSI threshold)
+- **Detection Range**: ~2-5 meters (adjustable via RSSI threshold)
 - **Response Time**: <3 seconds from approach to unlock
 - **Power Consumption**: ~80mA during scanning, ~120mA during pairing
 - **Memory Usage**: 87% Flash, 12% RAM (ESP32-D0WD-V3)
