@@ -17,14 +17,102 @@ An advanced ESP32-based keyless entry system that automatically detects iPhone p
 
 ## 🛠️ Hardware Requirements
 
+### Components List
 - **ESP32 Development Board** (ESP32-D0WD-V3 recommended)
-- **Transistors** for key fob signal control
-- **LED** for status indication
-- **Connections:**
-  - Pin 2: Status LED
-  - Pin 23: Key power control (transistor base)
-  - Pin 19: Lock signal (transistor base)
-  - Pin 18: Unlock signal (transistor base)
+- **3x NPN Transistors** (2N2222 or BC547)
+- **3x 1kΩ Resistors** (for transistor base protection)
+- **Car Key Fob** (to be modified)
+- **Jumper Wires** and breadboard/perfboard
+
+### Pin Connections
+- **Pin 2**: Built-in LED (no external LED needed)
+- **Pin 23**: Key power control (through transistor)
+- **Pin 19**: Lock signal (through transistor)  
+- **Pin 18**: Unlock signal (through transistor)
+
+## 🔌 Wiring Guide
+
+### Key Fob Modification
+**⚠️ Warning**: This requires opening and modifying your car key fob. Proceed at your own risk!
+
+1. **Open Key Fob**: Carefully remove the case (usually clips or small screws)
+2. **Locate Button Contacts**: Find the lock and unlock button contact points
+3. **Identify Power Rails**: Locate VCC (+3V) and GND on the key fob PCB
+
+### ESP32 to Key Fob Wiring
+
+```
+ESP32 Pin 23 → 1kΩ Resistor → Transistor Q1 Base
+                              Transistor Q1 Collector → Key Fob VCC
+                              Transistor Q1 Emitter → GND
+
+ESP32 Pin 19 → 1kΩ Resistor → Transistor Q2 Base  
+                              Transistor Q2 Collector → Key Fob Lock Button
+                              Transistor Q2 Emitter → Key Fob GND
+
+ESP32 Pin 18 → 1kΩ Resistor → Transistor Q3 Base
+                              Transistor Q3 Collector → Key Fob Unlock Button  
+                              Transistor Q3 Emitter → Key Fob GND
+```
+
+### Detailed Circuit Diagram
+
+```
+Key Fob Power Control (Pin 23):
+ESP32 Pin 23 ──[1kΩ]──┬── Base (B)
+                       │
+                    ┌──┴──┐
+                    │ Q1  │ 2N2222
+Key Fob VCC ────────┤  C  │
+                    │  E  │
+Key Fob GND ────────┴─────┘
+
+
+Lock Button Control (Pin 19):
+ESP32 Pin 19 ──[1kΩ]──┬── Base (B)
+                       │
+                    ┌──┴──┐
+                    │ Q2  │ 2N2222
+Lock Button ────────┤  C  │
+                    │  E  │  
+Key Fob GND ────────┴─────┘
+
+
+Unlock Button Control (Pin 18):
+ESP32 Pin 18 ──[1kΩ]──┬── Base (B)
+                       │
+                    ┌──┴──┐
+                    │ Q3  │ 2N2222
+Unlock Button ──────┤  C  │
+                    │  E  │
+Key Fob GND ────────┴─────┘
+```
+
+### Connection Steps
+
+1. **Prepare Transistors**: Connect 1kΩ resistor to each transistor base
+2. **Power Control**: Connect Q1 collector to key fob VCC, emitter to GND
+3. **Lock Control**: Connect Q2 collector to lock button, emitter to key fob GND  
+4. **Unlock Control**: Connect Q3 collector to unlock button, emitter to key fob GND
+5. **ESP32 Connections**: Connect resistor ends to ESP32 pins 23, 19, 18
+6. **Test**: Use multimeter to verify connections before powering on
+
+### Alternative: Relay Module Option
+
+For easier installation without key fob modification:
+
+```
+ESP32 Pin 23 → 12V Relay Module (Key Power)
+ESP32 Pin 19 → 5V Relay Module (Lock Signal)  
+ESP32 Pin 18 → 5V Relay Module (Unlock Signal)
+
+Connect relay outputs to car's central locking wires
+```
+
+**Components for Relay Option:**
+- 1x 12V Relay Module
+- 2x 5V Relay Modules  
+- Access to car's central locking wiring
 
 ## 🚀 How It Works
 
@@ -91,10 +179,10 @@ const int WEAK_SIGNAL_THRESHOLD = 3;    // Hysteresis filtering
 
 ### Hardware Pins
 ```cpp
-const int LED_PIN = 2;           // Status LED
-const int KEY_POWER_PIN = 23;    // Key fob power control
-const int LOCK_BUTTON_PIN = 19;  // Lock signal
-const int UNLOCK_BUTTON_PIN = 18; // Unlock signal
+const int LED_PIN = 2;           // Built-in ESP32 LED
+const int KEY_POWER_PIN = 23;    // Key fob power control (via transistor)
+const int LOCK_BUTTON_PIN = 19;  // Lock signal (via transistor)
+const int UNLOCK_BUTTON_PIN = 18; // Unlock signal (via transistor)
 ```
 
 ## 📱 iPhone Setup
