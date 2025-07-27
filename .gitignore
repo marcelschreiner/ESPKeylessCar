@@ -1,0 +1,41 @@
+# PlatformIO
+.pio/
+.vscode/
+lib/
+test/
+
+# Build artifacts
+*.bin
+*.elf
+*.map
+
+# IDE files
+.vscode/
+*.code-workspace
+.clang_complete
+.gcc-flags.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*~
+*.tmp
+*.bak
+
+# ESP32 specific
+sdkconfig
+sdkconfig.old
+build/
+
+# Personal configurations
+config.h.local
+secrets.h
+
+# Documentation build
+docs/_build/
+docs/.doctrees/
