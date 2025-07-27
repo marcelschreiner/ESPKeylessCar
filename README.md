@@ -50,6 +50,7 @@ Power On → Load devices → 30s pairing window → Auto-restart → Keyless mo
 - **3x NPN Transistors** (2N2222 or BC547)
 - **3x 1kΩ Resistors** (for transistor base protection)
 - **Car Key Fob** (to be modified)
+- **OBD2-to-USB-C Cable** (for permanent power supply)
 - **Jumper Wires** and breadboard/perfboard
 
 ### Pin Connections
@@ -124,6 +125,47 @@ Key Fob GND ────────┴─────┘
 4. **Unlock Control**: Connect Q3 collector to unlock button, emitter to key fob GND
 5. **ESP32 Connections**: Connect resistor ends to ESP32 pins 23, 19, 18
 6. **Test**: Use multimeter to verify connections before powering on
+
+### 🔋 Power Supply via OBD2
+
+For permanent installation in your car, power the ESP32 through the OBD2 port:
+
+#### **Why OBD2 Power?**
+- ✅ **Always Available**: OBD2 provides constant 12V power (even when car is off)
+- ✅ **Easy Installation**: No need to tap into car wiring
+- ✅ **Removable**: Can be unplugged if needed
+- ✅ **Standard Location**: OBD2 port is accessible in all modern cars
+
+#### **Required Cable**
+You need an **OBD2-to-USB-C cable** that provides 5V output for ESP32:
+
+🛒 **[Find OBD2-to-USB-C cables on Google Shopping](https://www.google.com/search?tbm=shop&q=obd2+to+usb+c+cable)**
+
+#### **Connection Setup**
+```
+Car OBD2 Port → OBD2-to-USB-C Cable → ESP32 USB-C Port
+```
+
+#### **Important Notes**
+- **Voltage**: Ensure cable outputs 5V (not 12V) to avoid damaging ESP32
+- **Current**: Cable should support at least 500mA for ESP32 operation
+- **Continuous Power**: Most OBD2 ports provide power even when car is off
+- **Location**: Mount ESP32 near OBD2 port (usually under dashboard)
+
+#### **Alternative Power Options**
+```
+Option 1: OBD2-to-USB-C (Recommended)
+├── Pros: Easy, removable, standard voltage
+└── Cons: Cable visible, OBD2 port occupied
+
+Option 2: 12V-to-5V Converter + Car Wiring
+├── Pros: Hidden installation, OBD2 port free
+└── Cons: Requires car wiring knowledge, permanent
+
+Option 3: Cigarette Lighter Adapter
+├── Pros: Very easy, standard adapters available
+└── Cons: Occupies lighter socket, cable visible
+```
 
 ![Proof-of-Concept](PoC.jpeg)
 Proof of Concept on Breadboard
