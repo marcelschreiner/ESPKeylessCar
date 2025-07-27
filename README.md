@@ -152,20 +152,6 @@ Car OBD2 Port → OBD2-to-USB-C Cable → ESP32 USB-C Port
 - **Continuous Power**: Most OBD2 ports provide power even when car is off
 - **Location**: Mount ESP32 near OBD2 port (usually under dashboard)
 
-#### **Alternative Power Options**
-```
-Option 1: OBD2-to-USB-C (Recommended)
-├── Pros: Easy, removable, standard voltage
-└── Cons: Cable visible, OBD2 port occupied
-
-Option 2: 12V-to-5V Converter + Car Wiring
-├── Pros: Hidden installation, OBD2 port free
-└── Cons: Requires car wiring knowledge, permanent
-
-Option 3: Cigarette Lighter Adapter
-├── Pros: Very easy, standard adapters available
-└── Cons: Occupies lighter socket, cable visible
-```
 
 ![Proof-of-Concept](PoC.jpeg)
 Proof of Concept on Breadboard
