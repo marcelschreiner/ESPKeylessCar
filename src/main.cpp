@@ -1,6 +1,6 @@
 /*
  * ESP32 Dynamic iPhone Keyless System v7 (Open Source Ready)
- * Author: Patrick Hosl
+ * Author: crazyhoesl
  * Date: 27. Juli 2025
  * 
  * Features:
