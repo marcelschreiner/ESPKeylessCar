@@ -288,12 +288,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Automotive security best practices
 - Open source community feedback
 
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/crazyhoesl/ESPKeylessCar/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/crazyhoesl/ESPKeylessCar/discussions)
-- **Documentation**: [Wiki](https://github.com/crazyhoesl/ESPKeylessCar/wiki)
-
 ---
 
 **⚠️ Disclaimer**: This system is intended for educational and personal use. Ensure compliance with local automotive regulations and security requirements for commercial applications.
