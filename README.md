@@ -125,7 +125,11 @@ Key Fob GND ────────┴─────┘
 5. **ESP32 Connections**: Connect resistor ends to ESP32 pins 23, 19, 18
 6. **Test**: Use multimeter to verify connections before powering on
 
+![Proof-of-Concept](PoC.jpeg)
+Proof of Concept on Breadboard
+
 ![Prototype](IMG_2320.jpeg)
+Prototype
 
 ## 📋 Installation
 
