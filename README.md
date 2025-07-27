@@ -315,6 +315,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
+- **Claude AI (Anthropic)** - Essential development assistance, code architecture, and comprehensive documentation
 - ESP32 BLE Arduino library contributors
 - Apple's BLE privacy specification
 - Automotive security best practices
