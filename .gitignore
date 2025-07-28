@@ -8,7 +8,7 @@ test/
 *.elf
 *.map
 # Keep compiled firmware for web flasher
-!ESP32_Keyless_v7.bin
+!ESP32_Keyless_v7*.bin
 
 # IDE files
 .vscode/

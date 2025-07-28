@@ -169,13 +169,15 @@ Car OBD2 Port → OBD2-to-USB-C Cable → ESP32 USB-C Port
 ### 🚀 Quick Flash (Web Browser)
 **Easiest method - no software installation required:**
 
-1. **Download firmware**: [ESP32_Keyless_v7.bin](ESP32_Keyless_v7.bin)
+1. **Download firmware**: [ESP32_Keyless_v7_Complete.bin](ESP32_Keyless_v7_Complete.bin)
 2. **Open Web Flasher**: [ESP Tool Online](https://esptool.spacehuhn.com/)
 3. **Connect ESP32** via USB cable
 4. **Click "Connect"** and select your ESP32's COM port
-5. **Add firmware file** and set offset to `0x10000`
+5. **Add firmware file** and set offset to `0x0` (zero!)
 6. **Flash** the firmware
 7. **Done!** ESP32 is ready to use
+
+**⚠️ Important**: Use the "Complete" version with offset `0x0` - this includes bootloader, partitions, and application in one file.
 
 ### 🛠️ Development Setup
 For code modifications and development:
