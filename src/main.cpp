@@ -51,7 +51,8 @@ const int UNLOCK_BUTTON_PIN = 18;
 // Keyless system parameters
 const int SCAN_TIME = 3;
 const unsigned long PROXIMITY_TIMEOUT = 10000;
-const int RSSI_THRESHOLD = -80;
+const int RSSI_UNLOCK_THRESHOLD = -90;  // Öffnen bei schwächerem Signal (größere Reichweite)
+const int RSSI_LOCK_THRESHOLD = -80;    // Schließen bei stärkerem Signal (kleinere Reichweite)
 const unsigned long POWER_OFF_DELAY = 10000;
 const unsigned long UNLOCK_DELAY = 500;
 const unsigned long LOCK_STABILIZATION_DELAY = 10;
@@ -481,7 +482,8 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
                 int rssi = advertisedDevice.getRSSI();
                 const char* deviceName = knownDevices[matchedDevice].name;
                 
-                if (rssi > RSSI_THRESHOLD) {
+                // Check for unlock (more sensitive, longer range)
+                if (rssi > RSSI_UNLOCK_THRESHOLD) {
                     lastSeenTime[matchedDevice] = millis();
                     deviceHysteresis[matchedDevice].weakSignalCount = 0;
                     deviceHysteresis[matchedDevice].isWeak = false;
@@ -509,7 +511,8 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
                         pendingLock = false;
                         Serial.println("🔓 Welcome! Activating unlock sequence...");
                     }
-                } else {
+                } else if (rssi <= RSSI_LOCK_THRESHOLD) {
+                    // Check for lock (less sensitive, shorter range)
                     // Weak signal hysteresis
                     if (millis() - deviceHysteresis[matchedDevice].lastWeakSignalTime > WEAK_SIGNAL_RESET_TIME) {
                         deviceHysteresis[matchedDevice].weakSignalCount = 0;
@@ -534,6 +537,12 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
                         if (!anyPhoneNearby) {
                             handleAllPhonesGone("weak signal hysteresis");
                         }
+                    }
+                } else {
+                    // RSSI between -90 and -80: Maintain current state, update last seen time
+                    if (deviceNearby[matchedDevice]) {
+                        lastSeenTime[matchedDevice] = millis();
+                        Serial.printf("📱 %s maintaining connection (RSSI: %d)\n", deviceName, rssi);
                     }
                 }
             }
