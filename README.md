@@ -325,7 +325,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Apple's BLE privacy specification
 - Automotive security best practices
 - Open source community feedback
-- Spepcial thanks to: **Christian** for the discussions during the build, which helped a lot! The podcast **[bitsundso.de #958](https://www.bitsundso.de/bus958/)** for the idea to achieve this with Claude Code. Also a big thanks for the inspiration from the YouTube channel community of **[Spiel und Zeug](https://www.youtube.com/@spielundzeug)**! And finally to my beautiful and smart **partner** ❤️, for supporting me during the hours I've spent and especially for your tears of joy when I had the breakthrough after weeks of failure during the IRK calculations. 
+- Special thanks to: **Christian** for the discussions during the build, which helped a lot! The podcast **[bitsundso.de #958](https://www.bitsundso.de/bus958/)** for the idea to achieve this with Claude Code. Also a big thanks for the inspiration from the YouTube channel community of **[Spiel und Zeug](https://www.youtube.com/@spielundzeug)**! And finally to my beautiful and smart **partner** ❤️, for supporting me during the hours I've spent and especially for your tears of joy when I had the breakthrough after weeks of failure during the IRK calculations. 
 
 ---
 
