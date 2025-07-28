@@ -173,11 +173,11 @@ Car OBD2 Port → OBD2-to-USB-C Cable → ESP32 USB-C Port
 2. **Open Web Flasher**: [ESP Tool Online](https://esptool.spacehuhn.com/)
 3. **Connect ESP32** via USB cable
 4. **Click "Connect"** and select your ESP32's COM port
-5. **Add firmware file** and set offset to `0x0` (zero!)
-6. **Flash** the firmware
+5. **Add firmware file** and **IMPORTANT: set offset to `0x0` (zero!)**
+6. **Flash** the firmware  
 7. **Done!** ESP32 is ready to use
 
-**⚠️ Important**: Use the "Complete" version with offset `0x0` - this includes bootloader, partitions, and application in one file.
+**🚨 Critical**: Always use offset `0x0` (not 0x10000)! This complete image includes bootloader, partitions, and application.
 
 ### 🛠️ Development Setup
 For code modifications and development:

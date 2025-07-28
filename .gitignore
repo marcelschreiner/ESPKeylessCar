@@ -5,10 +5,11 @@ lib/
 test/
 
 # Build artifacts
+*.bin
 *.elf
 *.map
-# Keep compiled firmware for web flasher
-!ESP32_Keyless_v7*.bin
+# Keep complete firmware for web flasher
+!ESP32_Keyless_v7_Complete.bin
 
 # IDE files
 .vscode/
