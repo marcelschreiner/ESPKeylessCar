@@ -15,7 +15,7 @@ An advanced ESP32-based keyless entry system that automatically detects iPhone p
 - 📡 **Advanced BLE Stack**: Handles complex server-to-scanner mode transitions
 - 🐕 **Watchdog Protection**: Hardware watchdog prevents system lockups
 
-
+[![Demonstration](https://img.youtube.com/vi/kE2PSPX0mT0/0.jpg)](https://www.youtube.com/watch?v=kE2PSPX0mT0)
 
 ## 🚀 How It Works
 
