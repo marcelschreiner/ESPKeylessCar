@@ -51,8 +51,8 @@ const int UNLOCK_BUTTON_PIN = 18;
 // Keyless system parameters
 const int SCAN_TIME = 3;
 const unsigned long PROXIMITY_TIMEOUT = 10000;
-const int RSSI_UNLOCK_THRESHOLD = -90;  // Öffnen bei schwächerem Signal (größere Reichweite)
-const int RSSI_LOCK_THRESHOLD = -80;    // Schließen bei stärkerem Signal (kleinere Reichweite)
+const int RSSI_UNLOCK_THRESHOLD = -80;  // Öffnen bei stärkerem Signal (kleine Reichweite)
+const int RSSI_LOCK_THRESHOLD = -90;    // Schließen bei schwächerem Signal (grössere Reichweite)
 const unsigned long POWER_OFF_DELAY = 10000;
 const unsigned long UNLOCK_DELAY = 500;
 const unsigned long LOCK_STABILIZATION_DELAY = 10;
