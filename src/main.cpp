@@ -308,18 +308,20 @@ void deactivateKeyPower() {
 }
 
 void triggerLock() {
-    digitalWrite(LOCK_BUTTON_PIN, HIGH);
-    delay(100);
     digitalWrite(LOCK_BUTTON_PIN, LOW);
+    pinMode(LOCK_BUTTON_PIN, OUTPUT);
+    delay(100);
+    pinMode(LOCK_BUTTON_PIN, INPUT);
     lockTriggered = true;
     lockTriggerTime = millis();
     Serial.println("🔒 Lock triggered");
 }
 
 void triggerUnlock() {
-    digitalWrite(UNLOCK_BUTTON_PIN, HIGH);
-    delay(100);
     digitalWrite(UNLOCK_BUTTON_PIN, LOW);
+    pinMode(UNLOCK_BUTTON_PIN, OUTPUT);
+    delay(100);
+    pinMode(UNLOCK_BUTTON_PIN, INPUT);
     unlockTriggered = true;
     Serial.println("🔓 Unlock triggered");
 }
@@ -729,8 +731,8 @@ void setup() {
     // Initialize pins
     pinMode(LED_PIN, OUTPUT);
     pinMode(KEY_POWER_PIN, OUTPUT);
-    pinMode(LOCK_BUTTON_PIN, OUTPUT);
-    pinMode(UNLOCK_BUTTON_PIN, OUTPUT);
+    pinMode(LOCK_BUTTON_PIN, INPUT);   // Set   lock Pin to a high impedance state
+    pinMode(UNLOCK_BUTTON_PIN, INPUT); // Set unlock Pin to a high impedance state
     
     setLED(false);
     digitalWrite(KEY_POWER_PIN, LOW);
