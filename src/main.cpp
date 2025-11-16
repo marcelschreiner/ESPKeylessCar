@@ -37,10 +37,14 @@
 #define PAIRING_TIMEOUT_MS 30000  // 30 seconds pairing window
 
 // Pin definitions
-const int LED_PIN = 2;
-const int KEY_POWER_PIN = 23;
-const int LOCK_BUTTON_PIN = 19;
-const int UNLOCK_BUTTON_PIN = 18;
+#define LED_PIN 2
+#define KEY_POWER_PIN 23
+#define LOCK_BUTTON_PIN 19
+#define UNLOCK_BUTTON_PIN 18
+
+// POWER DELAYS
+#define POWER_ON_DELAY 500
+#define POWER_OFF_DELAY 200
 
 // BLE Service UUIDs for pairing mode - Health/Fitness device
 #define DEVICE_INFO_SERVICE_UUID    "180A"  // Device Information Service
@@ -50,11 +54,9 @@ const int UNLOCK_BUTTON_PIN = 18;
 
 // Keyless system parameters
 const int SCAN_TIME = 3;
-const unsigned long PROXIMITY_TIMEOUT = 10000;
-const int RSSI_UNLOCK_THRESHOLD = -80;  // Öffnen bei stärkerem Signal (kleine Reichweite)
-const int RSSI_LOCK_THRESHOLD = -90;    // Schließen bei schwächerem Signal (grössere Reichweite)
-const unsigned long POWER_OFF_DELAY = 10000;
-const unsigned long UNLOCK_DELAY = 500;
+const unsigned long PROXIMITY_TIMEOUT = 5000;
+const int RSSI_UNLOCK_THRESHOLD = -70;  // Öffnen bei stärkerem Signal (kleine Reichweite)
+const int RSSI_LOCK_THRESHOLD = -80;    // Schließen bei schwächerem Signal (grössere Reichweite)
 const unsigned long LOCK_STABILIZATION_DELAY = 10;
 
 // Hysteresis parameters
@@ -69,11 +71,6 @@ const unsigned long WEAK_SIGNAL_RESET_TIME = 5000;
 #define DEVICES_START_ADDR 8
 #define DEVICE_ENTRY_SIZE 32  // 16 bytes IRK + 16 bytes name
 #define MAGIC_VALUE 0xDEADBEEF
-
-struct DeviceEntry {
-    uint8_t irk[16];
-    char name[16];
-};
 
 // ========================================
 // GLOBAL VARIABLES
@@ -91,13 +88,8 @@ BLEServer* pServer = NULL;
 BLEScan* pBLEScan = NULL;
 
 // Pairing state
-bool deviceConnected = false;
 unsigned long pairingStartTime = 0;
 int extractedDeviceCount = 0;
-
-// Device storage
-DeviceEntry knownDevices[MAX_DEVICES];
-int numKnownDevices = 0;
 
 // Keyless system state
 volatile unsigned long lastSeenTime[MAX_DEVICES] = {0};
@@ -110,6 +102,9 @@ volatile bool pendingLock = false;
 volatile unsigned long keyPowerTime = 0;
 volatile unsigned long lockTriggerTime = 0;
 
+volatile bool requestUnlock = false;
+volatile bool requestLock   = false;
+
 // Hysteresis per device
 struct DeviceHysteresis {
     volatile int weakSignalCount;
@@ -118,125 +113,182 @@ struct DeviceHysteresis {
 };
 volatile DeviceHysteresis deviceHysteresis[MAX_DEVICES];
 
-// LED control
-unsigned long lastLedBlink = 0;
-bool ledState = false;
+// LED controller
+LEDController led(LED_PIN);
+
+// Lock controller
+LockController lockCtrl(LOCK_BUTTON_PIN, UNLOCK_BUTTON_PIN, KEY_POWER_PIN);
+
+// Device storage
+DeviceStorage storage;
 
 // ========================================
 // LED CONTROL FUNCTIONS
 // ========================================
 
-void setLED(bool state) {
-    digitalWrite(LED_PIN, state);
-    ledState = state;
-}
+class LEDController {
+public:
+    LEDController(int pin) : pin(pin) {}
 
-void blinkLED(unsigned long interval) {
-    if (millis() - lastLedBlink >= interval) {
-        setLED(!ledState);
-        lastLedBlink = millis();
+    void init() {
+        pinMode(pin, OUTPUT);
+        set(false);
+        lastBlink = 0;
     }
-}
 
-void blinkPattern(int count, unsigned long onTime, unsigned long offTime) {
-    for (int i = 0; i < count; i++) {
-        setLED(true);
-        delay(onTime);
-        setLED(false);
-        if (i < count - 1) delay(offTime);
+    void set(bool state) {
+        digitalWrite(pin, state);
+        ledState = state;
     }
-}
+
+    void blink(unsigned long interval) {
+        if (millis() - lastBlink >= interval) {
+            set(!ledState);
+            lastBlink = millis();
+        }
+    }
+
+    void blinkPattern(int count, unsigned long onTime, unsigned long offTime) {
+        for (int i = 0; i < count; i++) {
+            set(true);
+            delay(onTime);
+            set(false);
+            if (i < count - 1) delay(offTime);
+        }
+    }
+
+private:
+    int pin;
+    bool ledState = false;
+    unsigned long lastBlink = 0;
+};
 
 // ========================================
 // EEPROM FUNCTIONS
 // ========================================
 
-void saveDevicesToEEPROM() {
-    Serial.println("💾 Saving devices to EEPROM...");
-    
-    EEPROM.writeULong(MAGIC_BYTES_ADDR, MAGIC_VALUE);
-    EEPROM.writeInt(DEVICE_COUNT_ADDR, numKnownDevices);
-    
-    for (int i = 0; i < numKnownDevices; i++) {
-        int addr = DEVICES_START_ADDR + (i * DEVICE_ENTRY_SIZE);
-        for (int j = 0; j < 16; j++) {
-            EEPROM.writeByte(addr + j, knownDevices[i].irk[j]);
-        }
-        for (int j = 0; j < 16; j++) {
-            EEPROM.writeByte(addr + 16 + j, knownDevices[i].name[j]);
-        }
+class DeviceStorage {
+public:
+    void init() {
+        EEPROM.begin(EEPROM_SIZE);
     }
-    
-    EEPROM.commit();
-    Serial.printf("✅ %d devices saved to EEPROM!\n", numKnownDevices);
-}
 
-bool loadDevicesFromEEPROM() {
-    Serial.println("📖 Loading devices from EEPROM...");
-    
-    uint32_t magic = EEPROM.readULong(MAGIC_BYTES_ADDR);
-    if (magic != MAGIC_VALUE) {
-        Serial.println("❌ No valid device data found in EEPROM");
-        return false;
-    }
-    
-    numKnownDevices = EEPROM.readInt(DEVICE_COUNT_ADDR);
-    if (numKnownDevices < 0 || numKnownDevices > MAX_DEVICES) {
-        Serial.println("❌ Invalid device count in EEPROM");
-        numKnownDevices = 0;
-        return false;
-    }
-    
-    for (int i = 0; i < numKnownDevices; i++) {
-        int addr = DEVICES_START_ADDR + (i * DEVICE_ENTRY_SIZE);
-        for (int j = 0; j < 16; j++) {
-            knownDevices[i].irk[j] = EEPROM.readByte(addr + j);
-        }
-        for (int j = 0; j < 16; j++) {
-            knownDevices[i].name[j] = EEPROM.readByte(addr + 16 + j);
-        }
-        knownDevices[i].name[15] = '\0'; // Ensure null termination
-    }
-    
-    Serial.printf("✅ %d devices loaded from EEPROM:\n", numKnownDevices);
-    for (int i = 0; i < numKnownDevices; i++) {
-        Serial.printf("  %d: %s - ", i + 1, knownDevices[i].name);
-        for (int j = 0; j < 16; j++) {
-            if (knownDevices[i].irk[j] < 16) Serial.print("0");
-            Serial.print(knownDevices[i].irk[j], HEX);
-        }
-        Serial.println();
-    }
-    
-    return true;
-}
+    void load() {
+        Serial.println("📖 Loading devices from EEPROM...");
 
-void addDevice(uint8_t* irk, const char* name) {
-    if (numKnownDevices >= MAX_DEVICES) {
-        Serial.println("❌ Maximum device limit reached!");
-        blinkPattern(2, 1000, 500); // 2x long blink = EEPROM full
-        return;
-    }
-    
-    // Check if device already exists
-    for (int i = 0; i < numKnownDevices; i++) {
-        if (memcmp(knownDevices[i].irk, irk, 16) == 0) {
-            Serial.printf("⚠️ Device %s already known, skipping...\n", name);
+        uint32_t magic = EEPROM.readULong(MAGIC_BYTES_ADDR);
+        if (magic != MAGIC_VALUE) {
+            Serial.println("❌ No valid device data found");
+            numKnownDevices = 0;
             return;
         }
+
+        numKnownDevices = EEPROM.readInt(DEVICE_COUNT_ADDR);
+        if (numKnownDevices < 0 || numKnownDevices > MAX_DEVICES) {
+            Serial.println("❌ Invalid device count in EEPROM");
+            numKnownDevices = 0;
+            return;
+        }
+
+        for (int i = 0; i < numKnownDevices; i++) {
+            int addr = DEVICES_START_ADDR + (i * DEVICE_ENTRY_SIZE);
+
+            for (int j = 0; j < 16; j++) {
+                knownDevices[i].irk[j] = EEPROM.readByte(addr + j);
+            }
+            for (int j = 0; j < 16; j++) {
+                knownDevices[i].name[j] = EEPROM.readByte(addr + 16 + j);
+            }
+            knownDevices[i].name[15] = '\0'; // Ensure null termination
+        }
+
+        Serial.printf("✅ %d devices loaded:\n", numKnownDevices);
+        for (int i = 0; i < numKnownDevices; i++) {
+            Serial.printf("  %d: %s - ", i + 1, knownDevices[i].name);
+
+            for (int j = 0; j < 16; j++) {
+                if (knownDevices[i].irk[j] < 16) Serial.print("0");
+                Serial.print(knownDevices[i].irk[j], HEX);
+            }
+            Serial.println();
+        }
+
+        return;
     }
-    
-    // Add new device
-    memcpy(knownDevices[numKnownDevices].irk, irk, 16);
-    strncpy(knownDevices[numKnownDevices].name, name, 15);
-    knownDevices[numKnownDevices].name[15] = '\0';
-    numKnownDevices++;
-    
-    Serial.printf("✅ Added device: %s\n", name);
-    saveDevicesToEEPROM();
-    
-    blinkPattern(3, 200, 200); // 3x short blink = device added
-}
+
+    bool add(const uint8_t* irk, const char* name) {
+        if (numKnownDevices >= MAX_DEVICES) {
+            Serial.println("❌ Maximum device limit reached!");
+            return false;
+        }
+
+        // Check duplicate
+        for (int i = 0; i < numKnownDevices; i++) {
+            if (memcmp(knownDevices[i].irk, irk, 16) == 0) {
+                Serial.printf("⚠️ Device %s already known, skipping...\n", name);
+                return false;
+            }
+        }
+
+        // Add entry
+        memcpy(knownDevices[numKnownDevices].irk, irk, 16);
+        strncpy(knownDevices[numKnownDevices].name, name, 15);
+        knownDevices[numKnownDevices].name[15] = '\0';
+
+        numKnownDevices++;
+
+        Serial.printf("✅ Added device: %s\n", name);
+        save();
+
+        return true;
+    }
+
+    int count() const {
+        return numKnownDevices;
+    }
+
+    void getIRK(int index, uint8_t* outIRK) const {
+        if (index >= 0 || index < numKnownDevices){
+            memcpy(outIRK, knownDevices[index].irk, 16);
+        }
+    }
+
+    void getName(int index, char* outName) const {
+        if (index >= 0 || index < numKnownDevices){
+            strncpy(outName, knownDevices[index].name, 16);
+        }
+    }
+
+private:
+    struct Device {
+        uint8_t irk[16];
+        char name[16];
+    };
+
+    Device knownDevices[MAX_DEVICES];
+    int numKnownDevices = 0;
+
+    void save() {
+        Serial.println("💾 Saving devices to EEPROM...");
+
+        EEPROM.writeULong(MAGIC_BYTES_ADDR, MAGIC_VALUE);
+        EEPROM.writeInt(DEVICE_COUNT_ADDR, numKnownDevices);
+
+        for (int i = 0; i < numKnownDevices; i++) {
+            int addr = DEVICES_START_ADDR + (i * DEVICE_ENTRY_SIZE);
+
+            for (int j = 0; j < 16; j++) {
+                EEPROM.writeByte(addr + j, knownDevices[i].irk[j]);
+            }
+            for (int j = 0; j < 16; j++) {
+                EEPROM.writeByte(addr + 16 + j, knownDevices[i].name[j]);
+            }
+        }
+
+        EEPROM.commit();
+        Serial.printf("✅ %d devices saved to EEPROM!\n", numKnownDevices);
+    }
+};
 
 // ========================================
 // CRYPTO FUNCTIONS
@@ -262,10 +314,12 @@ int verifyRPA(const uint8_t* rpaAddress) {
     input[13] = prand[0];
     input[14] = prand[1];
     input[15] = prand[2];
+    uint8_t irk[16];
     
-    for (int deviceIndex = 0; deviceIndex < numKnownDevices; deviceIndex++) {
+    for (int deviceIndex = 0; deviceIndex < storage.count(); deviceIndex++) {
         uint8_t aesResult[16];
-        aes128_ecb_fast(knownDevices[deviceIndex].irk, input, aesResult);
+        storage.getIRK(deviceIndex, irk);
+        aes128_ecb_fast(irk, input, aesResult);
         
         uint8_t reversedResult[16];
         for (int i = 0; i < 16; i++) {
@@ -290,41 +344,75 @@ int verifyRPA(const uint8_t* rpaAddress) {
 // KEYLESS SYSTEM FUNCTIONS
 // ========================================
 
-void activateKeyPower() {
-    if (!keyPowered) {
-        digitalWrite(KEY_POWER_PIN, HIGH);
-        keyPowered = true;
-        keyPowerTime = millis();
-        Serial.println("🔌 Key power activated");
-    }
-}
+class LockController {
+public:
+    LockController(int lockPin, int unlockPin, int keyPowerPin)
+        : lockPin(lockPin), unlockPin(unlockPin), keyPowerPin(keyPowerPin) {}
 
-void deactivateKeyPower() {
-    if (keyPowered) {
-        digitalWrite(KEY_POWER_PIN, LOW);
-        keyPowered = false;
+    void init() {
+        pinMode(lockPin, INPUT);   // Set   lock Pin to a high impedance state
+        pinMode(unlockPin, INPUT); // Set unlock Pin to a high impedance state
+        pinMode(keyPowerPin, OUTPUT);
+    
+        digitalWrite(lockPin, LOW);
+        digitalWrite(unlockPin, LOW);
+        digitalWrite(keyPowerPin, LOW);
+
+        stateUnlocked = true;
+        lock(); // start locked
+    }
+
+    void lock() {
+        if (!stateUnlocked) {
+            Serial.println("Already locked");
+            return;
+        }
+        digitalWrite(lockPin, LOW);
+        pinMode(lockPin, OUTPUT);
+        delay(100);
+        pinMode(lockPin, INPUT);
+        Serial.println("🔒 Lock triggered");
+        stateUnlocked = false;
+        deactivateKeyPower();
+    }
+
+    void unlock() {
+        if (stateUnlocked) {
+            Serial.println("Already unlocked");
+            return;
+        }
+        activateKeyPower();
+        digitalWrite(unlockPin, LOW);
+        pinMode(unlockPin, OUTPUT);
+        delay(100);
+        pinMode(unlockPin, INPUT);
+        Serial.println("🔓 Unlock triggered");
+        stateUnlocked = true;
+    }
+
+    bool isUnlocked() const {
+        return stateUnlocked;
+    }
+
+private:
+    int lockPin;
+    int unlockPin;
+    int keyPowerPin;
+    bool stateUnlocked = false;
+
+    void activateKeyPower() {
+        digitalWrite(keyPowerPin, HIGH);
+        Serial.println("🔌 Key power activated");
+        delay(POWER_ON_DELAY);
+    }
+
+    void deactivateKeyPower() {
+        delay(POWER_OFF_DELAY);
+        digitalWrite(keyPowerPin, LOW);
         Serial.println("🔌 Key power deactivated");
     }
-}
+};
 
-void triggerLock() {
-    digitalWrite(LOCK_BUTTON_PIN, LOW);
-    pinMode(LOCK_BUTTON_PIN, OUTPUT);
-    delay(100);
-    pinMode(LOCK_BUTTON_PIN, INPUT);
-    lockTriggered = true;
-    lockTriggerTime = millis();
-    Serial.println("🔒 Lock triggered");
-}
-
-void triggerUnlock() {
-    digitalWrite(UNLOCK_BUTTON_PIN, LOW);
-    pinMode(UNLOCK_BUTTON_PIN, OUTPUT);
-    delay(100);
-    pinMode(UNLOCK_BUTTON_PIN, INPUT);
-    unlockTriggered = true;
-    Serial.println("🔓 Unlock triggered");
-}
 
 void handleAllPhonesGone(const char* reason) {
     anyPhoneNearby = false;
@@ -334,7 +422,7 @@ void handleAllPhonesGone(const char* reason) {
         deviceHysteresis[i].isWeak = false;
     }
     
-    setLED(false);
+    led.set(false);
     Serial.printf("📱 All phones gone (%s)\n", reason);
     
     if (!lockTriggered && !pendingLock) {
@@ -351,16 +439,11 @@ void handleAllPhonesGone(const char* reason) {
 
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
-        deviceConnected = true;
-        Serial.println("=======================================");
-        Serial.println("=== DEVICE CONNECTED ===");
-        Serial.println("📱 iPhone connected for pairing!");
-        Serial.println("=======================================");
+        Serial.println("📱 Device connected for pairing!");
     }
 
     void onDisconnect(BLEServer* pServer) {
-        deviceConnected = false;
-        Serial.println("=== DEVICE DISCONNECTED ===");
+        Serial.println("📱 Device disconnected!");
         delay(500);
         if (currentMode == MODE_PAIRING) {
             pServer->startAdvertising();
@@ -371,7 +454,6 @@ class MyServerCallbacks: public BLEServerCallbacks {
 
 class MySecurity : public BLESecurityCallbacks {
     uint32_t onPassKeyRequest() {
-        Serial.println("=== PASSKEY REQUEST ===");
         Serial.println("📱 iPhone requesting passkey...");
         return 123456;
     }
@@ -449,7 +531,7 @@ class MySecurity : public BLESecurityCallbacks {
                         Serial.println();
                         
                         // Add device with corrected IRK
-                        addDevice(correctedIRK, deviceName);
+                        storage.add(correctedIRK, deviceName);
                         
                         Serial.println("🔑 IRK successfully extracted and saved!");
                         Serial.println("🔄 Restarting ESP32 for clean BLE initialization...");
@@ -462,7 +544,7 @@ class MySecurity : public BLESecurityCallbacks {
             }
         } else {
             Serial.printf("❌ PAIRING FAILED! Reason: %d\n", cmpl.fail_reason);
-            blinkPattern(5, 100, 100); // Very fast blink = error
+            led.blinkPattern(5, 100, 100); // Very fast blink = error
         }
         Serial.println("=======================================");
     }
@@ -475,6 +557,7 @@ class MySecurity : public BLESecurityCallbacks {
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
         if (currentMode != MODE_KEYLESS) return;
+        char deviceName[16];
         
         esp_bd_addr_t* addr = advertisedDevice.getAddress().getNative();
         
@@ -482,7 +565,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
             int matchedDevice = verifyRPA((uint8_t*)(*addr));
             if (matchedDevice >= 0) {
                 int rssi = advertisedDevice.getRSSI();
-                const char* deviceName = knownDevices[matchedDevice].name;
+                storage.getName(matchedDevice, deviceName);
                 
                 // Check for unlock (more sensitive, longer range)
                 if (rssi > RSSI_UNLOCK_THRESHOLD) {
@@ -506,12 +589,8 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
                     
                     // Immediate unlock on first strong signal
                     if (!wasAnyPhoneNearby && anyPhoneNearby) {
-                        setLED(true);
-                        activateKeyPower();
-                        lockTriggered = false;
-                        unlockTriggered = false;
-                        pendingLock = false;
-                        Serial.println("🔓 Welcome! Activating unlock sequence...");
+                        requestUnlock = true;
+                        Serial.println("🔓 Welcome! Requested unlock...");
                     }
                 } else if (rssi <= RSSI_LOCK_THRESHOLD) {
                     // Check for lock (less sensitive, shorter range)
@@ -708,9 +787,9 @@ void startKeylessMode() {
     }
     
     Serial.println("✅ Keyless system ready - monitoring for known devices");
-    setLED(true); // Solid LED = keyless mode active
+    led.set(true); // Solid LED = keyless mode active
     delay(2000);
-    setLED(false);
+    led.set(false);
 }
 
 // ========================================
@@ -719,46 +798,28 @@ void startKeylessMode() {
 
 void setup() {
     Serial.begin(115200);
-    delay(1000);
     
     Serial.println("=======================================");
-    Serial.println("🔵 ESP32 Dynamic Keyless System v7");
+    Serial.println("ESP32: BLE Keyless System");
     Serial.println("=======================================");
-    
-    // Initialize EEPROM
-    EEPROM.begin(EEPROM_SIZE);
-    
-    // Initialize pins
-    pinMode(LED_PIN, OUTPUT);
-    pinMode(KEY_POWER_PIN, OUTPUT);
-    pinMode(LOCK_BUTTON_PIN, INPUT);   // Set   lock Pin to a high impedance state
-    pinMode(UNLOCK_BUTTON_PIN, INPUT); // Set unlock Pin to a high impedance state
-    
-    setLED(false);
-    digitalWrite(KEY_POWER_PIN, LOW);
-    digitalWrite(LOCK_BUTTON_PIN, LOW);
-    digitalWrite(UNLOCK_BUTTON_PIN, LOW);
     
     // Initialize watchdog
     esp_task_wdt_init(30, true);
     esp_task_wdt_add(NULL);
     Serial.println("🐕 Watchdog enabled (30s timeout)");
+
+    // Initialize lock controller
+    lockCtrl.init();
+
+    // Initialize LED
+    led.init();
     
-    // Check reset reason to avoid endless restart loop
-    esp_reset_reason_t resetReason = esp_reset_reason();
-    Serial.printf("🔍 Reset reason: %d\n", resetReason);
+    // Initialize storage
+    storage.init();
+    storage.load();
     
-    // Load existing devices
-    bool hasDevices = loadDevicesFromEEPROM();
-    
-    if (hasDevices && numKnownDevices > 0) {
-        Serial.printf("✅ Found %d known devices\n", numKnownDevices);
-        for (int i = 0; i < numKnownDevices; i++) {
-            Serial.printf("  %d: %s\n", i + 1, knownDevices[i].name);
-        }
-        
-        // If this is a software reset (from our auto-restart), go directly to keyless mode
-        if (resetReason == ESP_RST_SW) {
+    if (storage.count() > 0) {
+        if (esp_reset_reason() == ESP_RST_SW) {
             Serial.println("🔐 Software reset detected - starting keyless mode directly...");
             startKeylessMode();
         } else {
@@ -766,8 +827,7 @@ void setup() {
             startPairingMode();
         }
     } else {
-        Serial.println("❌ No known devices found");
-        Serial.println("🔄 Starting pairing mode - connect your iPhone now!");
+        Serial.println("❌ No known devices found -> Starting pairing mode");
         startPairingMode();
     }
 }
@@ -782,36 +842,25 @@ void loop() {
     if (currentMode == MODE_PAIRING) {
         // Check pairing timeout
         if (millis() - pairingStartTime >= PAIRING_TIMEOUT_MS) {
-            if (numKnownDevices > 0) {
+            if (storage.count() > 0) {
                 Serial.println("⏰ Pairing timeout - restarting ESP32 for clean keyless mode");
-                delay(2000);
-                ESP.restart(); // Clean restart for proper BLE scanner initialization
+                ESP.restart();
             } else {
                 Serial.println("⏰ Pairing timeout - no devices paired, restarting pairing...");
                 pairingStartTime = millis(); // Restart pairing window
             }
         }
-        
-        // LED blink pattern for pairing mode
-        if (deviceConnected) {
-            blinkLED(200); // Fast blink when connected
-        } else {
-            blinkLED(1000); // Slow blink when waiting
-        }
+        led.blink(200);
         
     } else { // MODE_KEYLESS
-        // BLE scan for known devices with error handling
-        esp_task_wdt_reset();
         Serial.println("🔍 Scanning for known devices...");
         
         BLEScanResults foundDevices;
         try {
             foundDevices = pBLEScan->start(SCAN_TIME, false);
-            esp_task_wdt_reset();
             Serial.printf("📡 Scan completed, found %d devices\n", foundDevices.getCount());
         } catch (...) {
             Serial.println("⚠️ BLE scan failed, reinitializing scanner...");
-            esp_task_wdt_reset();
             
             // Reinitialize scanner on error
             pBLEScan = BLEDevice::getScan();
@@ -859,22 +908,29 @@ void loop() {
         if (pendingLock && millis() >= lockTriggerTime) {
             triggerLock();
             pendingLock = false;
-        }
-        
-        // Trigger unlock after delay
-        if (anyPhoneNearby && keyPowered && !unlockTriggered && 
-            (millis() - keyPowerTime >= UNLOCK_DELAY)) {
-            triggerUnlock();
-        }
-        
-        // Turn off key power after lock
-        if (lockTriggered && (millis() - lockTriggerTime >= POWER_OFF_DELAY)) {
+            delay(POWER_OFF_DELAY);
             deactivateKeyPower();
             lockTriggered = false;
         }
+        if (requestUnlock) {
+            requestUnlock = false;
+            activateKeyPower();
+            delay(POWER_ON_DELAY);
+            triggerUnlock();
+            lockTriggered = false;
+            unlockTriggered = false;
+            pendingLock = false;
+        }
+
+        
+        // Trigger unlock after delay
+        if (anyPhoneNearby && keyPowered && !unlockTriggered && 
+            (millis() - keyPowerTime >= POWER_ON_DELAY)) {
+            
+        }
         
         // LED status: ON when phones nearby, OFF when not
-        setLED(anyPhoneNearby);
+        led.set(lockCtrl.isUnlocked());
         
         pBLEScan->clearResults();
         delay(500);
