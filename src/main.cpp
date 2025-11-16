@@ -52,17 +52,6 @@
 #define HEART_RATE_SERVICE_UUID     "180D"  // Heart Rate Service (makes it look like fitness tracker)
 #define CHARACTERISTIC_UUID         "2A37"  // Heart Rate Measurement
 
-// Keyless system parameters
-const int SCAN_TIME = 3;
-const unsigned long PROXIMITY_TIMEOUT = 5000;
-const int RSSI_UNLOCK_THRESHOLD = -70;  // Öffnen bei stärkerem Signal (kleine Reichweite)
-const int RSSI_LOCK_THRESHOLD = -80;    // Schließen bei schwächerem Signal (grössere Reichweite)
-const unsigned long LOCK_STABILIZATION_DELAY = 10;
-
-// Hysteresis parameters
-const int WEAK_SIGNAL_THRESHOLD = 3;
-const unsigned long WEAK_SIGNAL_RESET_TIME = 5000;
-
 // ========================================
 // EEPROM STRUCTURE
 // ========================================
@@ -89,38 +78,6 @@ BLEScan* pBLEScan = NULL;
 
 // Pairing state
 unsigned long pairingStartTime = 0;
-int extractedDeviceCount = 0;
-
-// Keyless system state
-volatile unsigned long lastSeenTime[MAX_DEVICES] = {0};
-volatile bool deviceNearby[MAX_DEVICES] = {false};
-volatile bool anyPhoneNearby = false;
-volatile bool keyPowered = false;
-volatile bool lockTriggered = false;
-volatile bool unlockTriggered = false;
-volatile bool pendingLock = false;
-volatile unsigned long keyPowerTime = 0;
-volatile unsigned long lockTriggerTime = 0;
-
-volatile bool requestUnlock = false;
-volatile bool requestLock   = false;
-
-// Hysteresis per device
-struct DeviceHysteresis {
-    volatile int weakSignalCount;
-    volatile unsigned long lastWeakSignalTime;
-    volatile bool isWeak;
-};
-volatile DeviceHysteresis deviceHysteresis[MAX_DEVICES];
-
-// LED controller
-LEDController led(LED_PIN);
-
-// Lock controller
-LockController lockCtrl(LOCK_BUTTON_PIN, UNLOCK_BUTTON_PIN, KEY_POWER_PIN);
-
-// Device storage
-DeviceStorage storage;
 
 // ========================================
 // LED CONTROL FUNCTIONS
@@ -289,6 +246,7 @@ private:
         Serial.printf("✅ %d devices saved to EEPROM!\n", numKnownDevices);
     }
 };
+DeviceStorage storage;
 
 // ========================================
 // CRYPTO FUNCTIONS
@@ -302,7 +260,7 @@ void aes128_ecb_fast(const uint8_t key[16], const uint8_t in[16], uint8_t out[16
     mbedtls_aes_free(&ctx);
 }
 
-int verifyRPA(const uint8_t* rpaAddress) {
+int verifyRPA(const uint8_t* rpaAddress, uint8_t numDevices) {
     if ((rpaAddress[0] & 0xC0) != 0x40) {
         return -1; // Not a valid RPA
     }
@@ -316,7 +274,7 @@ int verifyRPA(const uint8_t* rpaAddress) {
     input[15] = prand[2];
     uint8_t irk[16];
     
-    for (int deviceIndex = 0; deviceIndex < storage.count(); deviceIndex++) {
+    for (int deviceIndex = 0; deviceIndex < numDevices; deviceIndex++) {
         uint8_t aesResult[16];
         storage.getIRK(deviceIndex, irk);
         aes128_ecb_fast(irk, input, aesResult);
@@ -414,24 +372,83 @@ private:
 };
 
 
-void handleAllPhonesGone(const char* reason) {
-    anyPhoneNearby = false;
-    for (int i = 0; i < numKnownDevices; i++) {
-        deviceNearby[i] = false;
-        deviceHysteresis[i].weakSignalCount = 0;
-        deviceHysteresis[i].isWeak = false;
+class BLEPresenceMonitor {
+public:
+    BLEPresenceMonitor() {
+        for (int i = 0; i < MAX_DEVICES; i++) {
+            lastSeen[i] = 0;
+            weakStart[i] = 0;
+            present[i] = false;
+        }
     }
-    
-    led.set(false);
-    Serial.printf("📱 All phones gone (%s)\n", reason);
-    
-    if (!lockTriggered && !pendingLock) {
-        lockTriggerTime = millis() + LOCK_STABILIZATION_DELAY;
-        pendingLock = true;
-        unlockTriggered = true;
-        Serial.println("🔒 Lock scheduled");
+
+    // Wird im BLE-Thread aufgerufen
+    void updateDevice(int index, int rssi) {
+        if (index < 0 || index >= MAX_DEVICES) return;
+
+        unsigned long now = millis();
+
+        portENTER_CRITICAL(&mux);
+
+        if (rssi > RSSI_UNLOCK_THRESHOLD) {
+            lastSeen[index] = now;
+            weakStart[index] = 0;
+            present[index] = true;
+        }
+        else if (rssi <= RSSI_LOCK_THRESHOLD) {
+            if (weakStart[index] == 0) weakStart[index] = now;
+            if (now - weakStart[index] >= ABSENCE_TIME) present[index] = false;
+        }
+        else {
+            if (present[index]) lastSeen[index] = now;
+        }
+
+        portEXIT_CRITICAL(&mux);
     }
-}
+
+    // Wird im loop() aufgerufen
+    void refresh() {
+        unsigned long now = millis();
+
+        portENTER_CRITICAL(&mux);
+        for (int i = 0; i < MAX_DEVICES; i++) {
+            if (present[i] && now - lastSeen[i] >= ABSENCE_TIME) {
+                present[i] = false;
+            }
+        }
+        portEXIT_CRITICAL(&mux);
+    }
+
+    bool anyDevicePresent() const {
+        portENTER_CRITICAL(&mux);
+
+        for (int i = 0; i < MAX_DEVICES; i++) {
+            if (present[i]) {
+                portEXIT_CRITICAL(&mux);
+                return true;
+            }
+        }
+
+        portEXIT_CRITICAL(&mux);
+        return false;
+    }
+
+private:
+    // Schwellwerte
+    static constexpr int RSSI_UNLOCK_THRESHOLD = -70;
+    static constexpr int RSSI_LOCK_THRESHOLD  = -80;
+    static constexpr unsigned long ABSENCE_TIME = 5000; // 5s
+
+    // Daten
+    unsigned long lastSeen[MAX_DEVICES];
+    unsigned long weakStart[MAX_DEVICES];
+    bool present[MAX_DEVICES];
+
+    // Thread-Sicherheit
+    mutable portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+};
+
+BLEPresenceMonitor presenceMonitor;
 
 // ========================================
 // BLE PAIRING CLASSES
@@ -508,7 +525,7 @@ class MySecurity : public BLESecurityCallbacks {
                     if (isCurrentDevice) {
                         // Create device name
                         char deviceName[16];
-                        snprintf(deviceName, sizeof(deviceName), "Device_%02d", numKnownDevices + 1);
+                        snprintf(deviceName, sizeof(deviceName), "Device_%02d", storage.count() + 1);
                         
                         // Fix IRK byte order - ESP32 BLE stack returns IRK in reverse order
                         uint8_t correctedIRK[16];
@@ -544,7 +561,6 @@ class MySecurity : public BLESecurityCallbacks {
             }
         } else {
             Serial.printf("❌ PAIRING FAILED! Reason: %d\n", cmpl.fail_reason);
-            led.blinkPattern(5, 100, 100); // Very fast blink = error
         }
         Serial.println("=======================================");
     }
@@ -556,76 +572,20 @@ class MySecurity : public BLESecurityCallbacks {
 
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
-        if (currentMode != MODE_KEYLESS) return;
         char deviceName[16];
+        uint8_t irk[16];
         
         esp_bd_addr_t* addr = advertisedDevice.getAddress().getNative();
         
         if (((*addr)[0] & 0xC0) == 0x40) { // RPA check
-            int matchedDevice = verifyRPA((uint8_t*)(*addr));
+            int matchedDevice = verifyRPA((uint8_t*)(*addr), storage.count());
+
+            // Check if IRK matches a known device
             if (matchedDevice >= 0) {
                 int rssi = advertisedDevice.getRSSI();
                 storage.getName(matchedDevice, deviceName);
-                
-                // Check for unlock (more sensitive, longer range)
-                if (rssi > RSSI_UNLOCK_THRESHOLD) {
-                    lastSeenTime[matchedDevice] = millis();
-                    deviceHysteresis[matchedDevice].weakSignalCount = 0;
-                    deviceHysteresis[matchedDevice].isWeak = false;
-                    
-                    bool wasAnyPhoneNearby = anyPhoneNearby;
-                    deviceNearby[matchedDevice] = true;
-                    
-                    // Update overall status
-                    anyPhoneNearby = false;
-                    for (int i = 0; i < numKnownDevices; i++) {
-                        if (deviceNearby[i]) {
-                            anyPhoneNearby = true;
-                            break;
-                        }
-                    }
-                    
-                    Serial.printf("📱 %s detected (RSSI: %d)\n", deviceName, rssi);
-                    
-                    // Immediate unlock on first strong signal
-                    if (!wasAnyPhoneNearby && anyPhoneNearby) {
-                        requestUnlock = true;
-                        Serial.println("🔓 Welcome! Requested unlock...");
-                    }
-                } else if (rssi <= RSSI_LOCK_THRESHOLD) {
-                    // Check for lock (less sensitive, shorter range)
-                    // Weak signal hysteresis
-                    if (millis() - deviceHysteresis[matchedDevice].lastWeakSignalTime > WEAK_SIGNAL_RESET_TIME) {
-                        deviceHysteresis[matchedDevice].weakSignalCount = 0;
-                    }
-                    deviceHysteresis[matchedDevice].lastWeakSignalTime = millis();
-                    
-                    if (++deviceHysteresis[matchedDevice].weakSignalCount >= WEAK_SIGNAL_THRESHOLD) {
-                        deviceHysteresis[matchedDevice].isWeak = true;
-                        deviceNearby[matchedDevice] = false;
-                        
-                        // Update overall status
-                        anyPhoneNearby = false;
-                        for (int i = 0; i < numKnownDevices; i++) {
-                            if (deviceNearby[i]) {
-                                anyPhoneNearby = true;
-                                break;
-                            }
-                        }
-                        
-                        Serial.printf("📱 %s weak signal (RSSI: %d)\n", deviceName, rssi);
-                        
-                        if (!anyPhoneNearby) {
-                            handleAllPhonesGone("weak signal hysteresis");
-                        }
-                    }
-                } else {
-                    // RSSI between -90 and -80: Maintain current state, update last seen time
-                    if (deviceNearby[matchedDevice]) {
-                        lastSeenTime[matchedDevice] = millis();
-                        Serial.printf("📱 %s maintaining connection (RSSI: %d)\n", deviceName, rssi);
-                    }
-                }
+
+                presenceMonitor.updateDevice(matchedDevice, rssi);
             }
         }
     }
@@ -732,7 +692,7 @@ void startPairingMode() {
     
     Serial.println("🚀 ESPKV7 Tracker advertising started!");
     Serial.println("📱 Go to iPhone Settings > Bluetooth and look for 'ESPKV7 Tracker' as fitness device");
-    if (numKnownDevices > 0) {
+    if (storage.count() > 0) {
         Serial.printf("⏱️ 30s window to add more devices (or automatic keyless mode after timeout)\n");
     } else {
         Serial.printf("⏱️ Pairing window: %d seconds\n", PAIRING_TIMEOUT_MS / 1000);
@@ -743,58 +703,37 @@ void startKeylessMode() {
     currentMode = MODE_KEYLESS;
     
     Serial.println("🔐 Starting keyless mode...");
-    
-    // Stop advertising if running
-    if (pServer) {
-        pServer->getAdvertising()->stop();
-    }
-    
-    // Complete BLE shutdown and restart for clean scanner mode
-    Serial.println("🔄 Reinitializing BLE stack for scanning...");
-    BLEDevice::deinit(true);
-    delay(2000);  // Extended delay for complete BLE stack cleanup
-    
-    // Restart BLE in scanner mode
-    BLEDevice::init("");
-    delay(500);   // Allow BLE stack to initialize
-    
-    // Setup scanner with robust error handling
+
+    BLEDevice::init("ESP32 Scanner");
     pBLEScan = BLEDevice::getScan();
-    if (pBLEScan) {
-        Serial.println("📡 Setting up BLE scanner...");
-        pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-        pBLEScan->setActiveScan(false);  // Passive scanning is more reliable
-        
-        // Wait for BLE to be ready, then set parameters
-        delay(1000);
-        
-        // Use very conservative scan parameters to avoid errors
-        pBLEScan->setInterval(1600);  // 1000ms intervals
-        pBLEScan->setWindow(800);     // 500ms windows
-        
-        Serial.println("📡 BLE scanner ready - parameters set successfully");
-    } else {
-        Serial.println("❌ Failed to create BLE scanner");
-    }
-    
-    // Initialize hysteresis
-    for (int i = 0; i < numKnownDevices; i++) {
-        deviceHysteresis[i].weakSignalCount = 0;
-        deviceHysteresis[i].lastWeakSignalTime = 0;
-        deviceHysteresis[i].isWeak = false;
-        deviceNearby[i] = false;
-        lastSeenTime[i] = 0;
-    }
-    
-    Serial.println("✅ Keyless system ready - monitoring for known devices");
-    led.set(true); // Solid LED = keyless mode active
-    delay(2000);
-    led.set(false);
+
+    // Attach callback
+    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+
+    // Active scan gives RSSI + scan response
+    pBLEScan->setActiveScan(true);
+
+    // Interval & window: far better performance for iPhone detection
+    pBLEScan->setInterval(100);
+    pBLEScan->setWindow(80);
+
+    // Start continuous scanning
+    Serial.println("▶️ Starting continuous scan...");
+    pBLEScan->start(0, nullptr, false);   // 0 = infinite scanning
 }
 
 // ========================================
 // MAIN SETUP
 // ========================================
+
+
+// LED controller
+LEDController led(LED_PIN);
+
+// Lock controller
+LockController lockCtrl(LOCK_BUTTON_PIN, UNLOCK_BUTTON_PIN, KEY_POWER_PIN);
+
+
 
 void setup() {
     Serial.begin(115200);
@@ -852,87 +791,18 @@ void loop() {
         }
         led.blink(200);
         
-    } else { // MODE_KEYLESS
-        Serial.println("🔍 Scanning for known devices...");
-        
-        BLEScanResults foundDevices;
-        try {
-            foundDevices = pBLEScan->start(SCAN_TIME, false);
-            Serial.printf("📡 Scan completed, found %d devices\n", foundDevices.getCount());
-        } catch (...) {
-            Serial.println("⚠️ BLE scan failed, reinitializing scanner...");
-            
-            // Reinitialize scanner on error
-            pBLEScan = BLEDevice::getScan();
-            if (pBLEScan) {
-                pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-                pBLEScan->setActiveScan(false);
-                pBLEScan->setInterval(1600);
-                pBLEScan->setWindow(800);
-                Serial.println("📡 Scanner reinitialized");
-            }
-            foundDevices = BLEScanResults(); // Empty result
-        }
-        
-        // Reset weak signal counters if timeout
-        for (int i = 0; i < numKnownDevices; i++) {
-            if (deviceHysteresis[i].weakSignalCount > 0 && 
-                (millis() - deviceHysteresis[i].lastWeakSignalTime > WEAK_SIGNAL_RESET_TIME)) {
-                deviceHysteresis[i].weakSignalCount = 0;
-                deviceHysteresis[i].isWeak = false;
-            }
-        }
-        
-        // Check device timeouts
-        for (int i = 0; i < numKnownDevices; i++) {
-            if (deviceNearby[i] && (millis() - lastSeenTime[i] > PROXIMITY_TIMEOUT)) {
-                deviceNearby[i] = false;
-                Serial.printf("📱 %s timeout\n", knownDevices[i].name);
-                
-                // Update overall status
-                anyPhoneNearby = false;
-                for (int j = 0; j < numKnownDevices; j++) {
-                    if (deviceNearby[j]) {
-                        anyPhoneNearby = true;
-                        break;
-                    }
-                }
-                
-                if (!anyPhoneNearby) {
-                    handleAllPhonesGone("device timeout");
-                }
-            }
-        }
-        
-        // Execute pending lock
-        if (pendingLock && millis() >= lockTriggerTime) {
-            triggerLock();
-            pendingLock = false;
-            delay(POWER_OFF_DELAY);
-            deactivateKeyPower();
-            lockTriggered = false;
-        }
-        if (requestUnlock) {
-            requestUnlock = false;
-            activateKeyPower();
-            delay(POWER_ON_DELAY);
-            triggerUnlock();
-            lockTriggered = false;
-            unlockTriggered = false;
-            pendingLock = false;
-        }
+    } 
+    else 
+    {
+        // MODE_KEYLESS
+        presenceMonitor.refresh();
 
-        
-        // Trigger unlock after delay
-        if (anyPhoneNearby && keyPowered && !unlockTriggered && 
-            (millis() - keyPowerTime >= POWER_ON_DELAY)) {
-            
+        if (presenceMonitor.anyDevicePresent()) {
+            lockCtrl.unlock();
+        } else {
+            lockCtrl.lock();
         }
-        
-        // LED status: ON when phones nearby, OFF when not
         led.set(lockCtrl.isUnlocked());
-        
-        pBLEScan->clearResults();
-        delay(500);
+        delay(100);
     }
 }
