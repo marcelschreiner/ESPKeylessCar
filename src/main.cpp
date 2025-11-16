@@ -205,13 +205,13 @@ public:
     }
 
     void getIRK(int index, uint8_t* outIRK) const {
-        if (index >= 0 || index < numKnownDevices){
+        if (index >= 0 && index < numKnownDevices){
             memcpy(outIRK, knownDevices[index].irk, 16);
         }
     }
 
     void getName(int index, char* outName) const {
-        if (index >= 0 || index < numKnownDevices){
+        if (index >= 0 && index < numKnownDevices){
             strncpy(outName, knownDevices[index].name, 16);
         }
     }
@@ -437,8 +437,8 @@ public:
 
 private:
     // Schwellwerte
-    static constexpr int RSSI_UNLOCK_THRESHOLD = -70;
-    static constexpr int RSSI_LOCK_THRESHOLD  = -80;
+    static constexpr int RSSI_UNLOCK_THRESHOLD = -65;
+    static constexpr int RSSI_LOCK_THRESHOLD  = -90;
     static constexpr unsigned long ABSENCE_TIME = 5000; // 5s
 
     // Daten
@@ -709,8 +709,8 @@ void startKeylessMode() {
     BLEDevice::init("ESP32 Scanner");
     pBLEScan = BLEDevice::getScan();
 
-    // Attach callback
-    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    // Attach callback, *mit* Duplikaten
+    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks(), true);
 
     // Active scan gives RSSI + scan response
     pBLEScan->setActiveScan(true);
