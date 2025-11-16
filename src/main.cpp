@@ -322,7 +322,7 @@ public:
 
     void lock() {
         if (!stateUnlocked) {
-            Serial.println("Already locked");
+            //Serial.println("Already locked");
             return;
         }
         digitalWrite(lockPin, LOW);
@@ -336,7 +336,7 @@ public:
 
     void unlock() {
         if (stateUnlocked) {
-            Serial.println("Already unlocked");
+            //Serial.println("Already unlocked");
             return;
         }
         activateKeyPower();
@@ -387,6 +387,8 @@ public:
         if (index < 0 || index >= MAX_DEVICES) return;
 
         unsigned long now = millis();
+
+        Serial.printf("📶 Device %d RSSI: %d dBm\n", index + 1, rssi);
 
         portENTER_CRITICAL(&mux);
 
@@ -440,9 +442,9 @@ private:
     static constexpr unsigned long ABSENCE_TIME = 5000; // 5s
 
     // Daten
-    unsigned long lastSeen[MAX_DEVICES];
-    unsigned long weakStart[MAX_DEVICES];
-    bool present[MAX_DEVICES];
+    unsigned long lastSeen[MAX_DEVICES];     // Zeitpunkt wann zuletzt stark sichtbar
+    unsigned long weakStart[MAX_DEVICES];    // Zeitpunkt wann schwach oder unsichtbar wurde
+    bool present[MAX_DEVICES];               // aktueller Präsenzzustand (true/false)
 
     // Thread-Sicherheit
     mutable portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
